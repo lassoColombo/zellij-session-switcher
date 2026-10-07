@@ -46,6 +46,40 @@ $env.zellij_session_switcher_config = {picker: {|| $in | where not exited | firs
 
 Returning nothing cancels the switch.
 
+Here is one real one, using [skim](https://github.com/lotabout/skim)'s Nushell plugin, previewing
+the tabs of the session under the cursor - which is the question being asked, not "which session
+is this" but "is the thing I am after in it":
+
+```nu
+$env.zellij_session_switcher_config = {picker: {||
+  let sessions = $in
+  let names = $sessions | get name | each {|it| $it | str length} | math max
+
+  let preview = {||
+    let session = $in
+    if $session.exited { return "exited - switching resurrects it" }
+    let r = ^zellij -s $session.name action list-tabs --panes --json | complete
+    if $r.exit_code != 0 { return $r.stderr }
+    $r.stdout | from json | each {|tab|
+      let panes = $tab.selectable_tiled_panes_count + $tab.selectable_floating_panes_count
+      $"(if $tab.active {"> "} else {"  "})($tab.name) ($panes)"
+    } | str join (char newline)
+  }
+
+  let format = {||
+    let state = if $in.current { "current" } else if $in.exited { "exited" } else { "" }
+    let age = $in.created | into string | split row " " | first 2 | str join " "
+    $"($in.name | fill -w $names) ($state | fill -w 7) ($age)"
+  }
+
+  $sessions | sk --format $format --preview $preview --preview-window "right:50%:wrap" --layout reverse --prompt "session "
+}}
+```
+
+`zellij -s <name> action ...` is how a session other than the current one answers questions, so
+the preview can show tabs you are not in. An exited session has no server to ask - it is still
+worth switching to, since that resurrects it.
+
 ## Installation
 
 ```nu
